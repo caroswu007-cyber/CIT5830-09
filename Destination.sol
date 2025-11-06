@@ -22,54 +22,44 @@ contract Destination is AccessControl {
         _grantRole(WARDEN_ROLE, admin);
     }
 
-	function wrap(address _underlying_token, address _recipient, uint256 _amount)
-    public
-    onlyRole(WARDEN_ROLE)
-{
-    require(_recipient != address(0), "recipient zero");
-    require(_amount > 0, "amount zero");
+	function wrap(address _underlying_token, address _recipient, uint256 _amount ) public onlyRole(WARDEN_ROLE) {
+		require(_recipient != address(0), "recipient zero");
+        require(_amount > 0, "amount zero");
 
-    // 依据测试：wrapped_tokens(underlying) => wrapped
-    address wrapped = wrapped_tokens[_underlying_token];
-    require(wrapped != address(0), "token not registered");
+        address wrapped = wrapped_tokens[_underlying_token]; // underlying => wrapped
+        require(wrapped != address(0), "token not registered");
 
-    BridgeToken(wrapped).mint(_recipient, _amount);
+        BridgeToken(wrapped).mint(_recipient, _amount);
+        emit Wrap(_underlying_token, wrapped, _recipient, _amount);
+	}
 
-    emit Wrap(_underlying_token, wrapped, _recipient, _amount);
-}
+	function unwrap(address _wrapped_token, address _recipient, uint256 _amount ) public {
+		require(_wrapped_token != address(0), "wrapped zero");
+        require(_recipient != address(0), "recipient zero");
+        require(_amount > 0, "amount zero");
 
-   function unwrap(address _wrapped_token, address _recipient, uint256 _amount) public {
-    require(_wrapped_token != address(0), "wrapped zero");
-    require(_recipient != address(0), "recipient zero");
-    require(_amount > 0, "amount zero");
+        address underlying = underlying_tokens[_wrapped_token]; // wrapped => underlying
+        require(underlying != address(0), "wrapped not recognized");
 
-    // 依据测试：underlying_tokens(wrapped) => underlying
-    address underlying = underlying_tokens[_wrapped_token];
-    require(underlying != address(0), "wrapped not recognized");
+        // BridgeToken 支持 burnFrom(address,uint256)
+        BridgeToken(_wrapped_token).burnFrom(msg.sender, _amount);
 
-    // Destination 合约代表用户销毁
-    BridgeToken(_wrapped_token).burn(msg.sender, _amount);
+        emit Unwrap(underlying, _wrapped_token, msg.sender, _recipient, _amount);
+	}
 
-    emit Unwrap(underlying, _wrapped_token, msg.sender, _recipient, _amount);
-}
-	function createToken(address _underlying_token, string memory name, string memory symbol)
-    public
-    onlyRole(CREATOR_ROLE)
-    returns (address)
-{
-    require(_underlying_token != address(0), "underlying zero");
-    // 按测试期望：不允许已通过 wrapped_tokens 注册过的 underlying 再注册
-    require(wrapped_tokens[_underlying_token] == address(0), "already registered");
+	function createToken(address _underlying_token, string memory name, string memory symbol ) public onlyRole(CREATOR_ROLE) returns(address) {
+		require(_underlying_token != address(0), "underlying zero");
+        require(wrapped_tokens[_underlying_token] == address(0), "already registered");
 
-    BridgeToken wrapped = new BridgeToken(name, symbol, _underlying_token, address(this));
+        // BridgeToken constructor(address underlying, string name, string symbol, address admin)
+        BridgeToken wrapped = new BridgeToken(_underlying_token, name, symbol, address(this));
 
-    // 建立与测试一致的映射方向
-    wrapped_tokens[_underlying_token] = address(wrapped);     // underlying => wrapped
-    underlying_tokens[address(wrapped)] = _underlying_token;  // wrapped => underlying
+        wrapped_tokens[_underlying_token] = address(wrapped);     // underlying => wrapped
+        underlying_tokens[address(wrapped)] = _underlying_token;  // wrapped => underlying
 
-    emit Creation(_underlying_token, address(wrapped));
-    return address(wrapped);
-}
+        emit Creation(_underlying_token, address(wrapped));
+        return address(wrapped);
+	}
 
 }
 
