@@ -26,14 +26,15 @@ contract Destination is AccessControl {
     public
     onlyRole(WARDEN_ROLE)
 {
-    address wrapped = underlying_tokens[_underlying_token];
-    require(wrapped != address(0), "token not registered");
     require(_recipient != address(0), "recipient zero");
     require(_amount > 0, "amount zero");
 
+    // 依据测试：wrapped_tokens(underlying) => wrapped
+    address wrapped = wrapped_tokens[_underlying_token];
+    require(wrapped != address(0), "token not registered");
+
     BridgeToken(wrapped).mint(_recipient, _amount);
 
-    // event Wrap(underlying, wrapped, to, amount)
     emit Wrap(_underlying_token, wrapped, _recipient, _amount);
 }
 
@@ -42,13 +43,13 @@ contract Destination is AccessControl {
     require(_recipient != address(0), "recipient zero");
     require(_amount > 0, "amount zero");
 
-    address underlying = wrapped_tokens[_wrapped_token];
+    // 依据测试：underlying_tokens(wrapped) => underlying
+    address underlying = underlying_tokens[_wrapped_token];
     require(underlying != address(0), "wrapped not recognized");
 
-    // Destination 合约调用 BridgeToken 的 burn(from, amount)
+    // Destination 合约代表用户销毁
     BridgeToken(_wrapped_token).burn(msg.sender, _amount);
 
-    // event Unwrap(underlying, wrapped, frm, to, amount)
     emit Unwrap(underlying, _wrapped_token, msg.sender, _recipient, _amount);
 }
 	function createToken(address _underlying_token, string memory name, string memory symbol)
@@ -57,14 +58,15 @@ contract Destination is AccessControl {
     returns (address)
 {
     require(_underlying_token != address(0), "underlying zero");
-    require(underlying_tokens[_underlying_token] == address(0), "already registered");
+    // 按测试期望：不允许已通过 wrapped_tokens 注册过的 underlying 再注册
+    require(wrapped_tokens[_underlying_token] == address(0), "already registered");
 
     BridgeToken wrapped = new BridgeToken(name, symbol, _underlying_token, address(this));
 
-    underlying_tokens[_underlying_token] = address(wrapped);
-    wrapped_tokens[address(wrapped)] = _underlying_token;
+    // 建立与测试一致的映射方向
+    wrapped_tokens[_underlying_token] = address(wrapped);     // underlying => wrapped
+    underlying_tokens[address(wrapped)] = _underlying_token;  // wrapped => underlying
 
-    // event Creation(underlying, wrapped)
     emit Creation(_underlying_token, address(wrapped));
     return address(wrapped);
 }
